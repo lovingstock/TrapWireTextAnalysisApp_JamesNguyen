@@ -1,0 +1,272 @@
+﻿@{
+    ViewData["Title"] = "Home Page";
+}
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Text Letter Analysis</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 40px auto;
+            line-height: 1.5;
+        }
+
+        h1 {
+            margin-bottom: 0.3rem;
+        }
+
+        .instructions {
+            font-size: 0.95rem;
+            margin-bottom: 1rem;
+            padding: 0.75rem;
+            border-radius: 4px;
+            background-color: #f5f5f5;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 0.5rem;
+            font-family: Consolas, monospace;
+            font-size: 0.95rem;
+            box-sizing: border-box;
+        }
+
+        button {
+            margin-top: 0.75rem;
+            padding: 0.5rem 1.2rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.95rem;
+        }
+
+            button#analyzeButton {
+                background-color: #007bff;
+                color: #fff;
+            }
+
+                button#analyzeButton[disabled] {
+                    opacity: 0.7;
+                    cursor: default;
+                }
+
+        .results {
+            margin-top: 2rem;
+        }
+
+        .summary {
+            margin-bottom: 1rem;
+            font-size: 0.95rem;
+        }
+
+        .error {
+            color: #a00;
+            margin-top: 0.5rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        th, td {
+            padding: 0.4rem 0.3rem;
+            border-bottom: 1px solid #ddd;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f0f0f0;
+            cursor: pointer;
+        }
+
+            th.sort-asc::after {
+                content: " ▲";
+            }
+
+            th.sort-desc::after {
+                content: " ▼";
+            }
+    </style>
+</head>
+<body>
+    <h1>Text Letter Analysis</h1>
+
+    <div class="instructions">
+        <strong>Instructions:</strong>
+        <ol>
+            <li>Type or paste your text into the box below.</li>
+            <li>Click the <em>Submit</em> button.</li>
+            <li>The letter frequency analysis appears below.</li>
+        </ol>
+    </div>
+
+    <form id="textForm">
+        <label for="inputText"><strong>Enter your text:</strong></label><br />
+        <textarea id="inputText" name="inputText" placeholder="Type or paste text here..."></textarea><br />
+        <button type="submit" id="analyzeButton">Submit</button>
+        <div id="error" class="error"></div>
+    </form>
+
+    <div id="results" class="results" style="display: none;">
+        <h2>Analysis</h2>
+        <div id="summary" class="summary"></div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th data-col="letter">Letter</th>
+                    <th data-col="count">Count</th>
+                    <th data-col="percent">Percentage</th>
+                </tr>
+            </thead>
+            <tbody id="resultsBody">
+                <!-- Rows injected via JavaScript -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        (function () {
+            const API_URL = "/api/TextAnalysis/Analyze"; 
+
+            const form = document.getElementById("textForm");
+            const inputText = document.getElementById("inputText");
+            const analyzeButton = document.getElementById("analyzeButton");
+            const errorDiv = document.getElementById("error");
+            const resultsDiv = document.getElementById("results");
+            const resultsBody = document.getElementById("resultsBody");
+            const summaryDiv = document.getElementById("summary");
+            const headers = document.querySelectorAll("th[data-col]");
+
+            let tableData = [];
+            let currentSort = { col: null, dir: 1 };
+
+            function setLoading(isLoading) {
+                if (isLoading) {
+                    analyzeButton.disabled = true;
+                    analyzeButton.textContent = "Analyzing...";
+                } else {
+                    analyzeButton.disabled = false;
+                    analyzeButton.textContent = "Submit";
+                }
+            }
+
+            function clearSortIndicators() {
+                headers.forEach(h => h.classList.remove("sort-asc", "sort-desc"));
+            }
+
+            function renderTable() {
+                resultsBody.innerHTML = "";
+
+                tableData.forEach(item => {
+                    const row = document.createElement("tr");
+                    row.innerHTML = `
+                        <td>${item.letter}</td>
+                        <td>${item.count}</td>
+                        <td>${item.percent.toFixed(2)}%</td>
+                    `;
+                    resultsBody.appendChild(row);
+                });
+            }
+
+            function sortTable(col) {
+                if (!tableData || tableData.length === 0) {
+                    return;
+                }
+
+                if (currentSort.col === col) {
+                    currentSort.dir *= -1; // toggle
+                } else {
+                    currentSort.col = col;
+                    currentSort.dir = 1;
+                }
+
+                clearSortIndicators();
+                const activeHeader = document.querySelector(`th[data-col="${col}"]`);
+                if (activeHeader) {
+                    activeHeader.classList.add(currentSort.dir === 1 ? "sort-asc" : "sort-desc");
+                }
+
+                tableData.sort((a, b) => {
+                    if (col === "letter") {
+                        return currentSort.dir * a.letter.localeCompare(b.letter);
+                    }
+                    return currentSort.dir * (a[col] - b[col]);
+                });
+
+                renderTable();
+            }
+
+            headers.forEach(h => {
+                h.addEventListener("click", () => sortTable(h.dataset.col));
+            });
+
+            form.addEventListener("submit", async function (e) {
+                e.preventDefault();
+                errorDiv.textContent = "";
+                resultsDiv.style.display = "none";
+                resultsBody.innerHTML = "";
+                summaryDiv.innerHTML = "";
+                clearSortIndicators();
+                currentSort = { col: null, dir: 1 };
+
+                const text = inputText.value || "";
+                if (!text.trim()) {
+                    errorDiv.textContent = "Please enter some text before submitting.";
+                    return;
+                }
+
+                try {
+                    setLoading(true);
+
+                    const response = await fetch(API_URL, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({ text: text })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error("API request failed with status " + response.status);
+                    }
+
+                    const data = await response.json();
+                    // Expecting: { totalLetters, distinctLetters, results: [ { letter, count, percent }, ... ] }
+
+                    if (!data || !Array.isArray(data.results)) {
+                        throw new Error("Unexpected API response format.");
+                    }
+
+                    tableData = data.results.map(r => ({
+                        letter: r.letter,
+                        count: r.count,
+                        percent: r.percent
+                    }));
+
+                    summaryDiv.innerHTML =
+                        `Total letters: <strong>${data.totalLetters}</strong> — ` +
+                        `Distinct letters: <strong>${data.distinctLetters}</strong>`;
+
+                    renderTable();
+                    resultsDiv.style.display = "block";
+                } catch (err) {
+                    console.error(err);
+                    errorDiv.textContent = "Error: " + err.message;
+                } finally {
+                    setLoading(false);
+                }
+            });
+        })();
+    </script>
+</body>
+</html>

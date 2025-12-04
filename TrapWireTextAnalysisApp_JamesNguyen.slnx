@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="../ServiceTests/ServiceTests.csproj" />
+  <Project Path="TrapWireTextAnalysisApp_JamesNguyen.csproj" />
+</Solution>
